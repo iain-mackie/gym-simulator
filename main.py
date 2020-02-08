@@ -3,8 +3,9 @@ import gym_simulator.envs.simulator_env
 from gym.envs.registration import register
 from gym import envs
 import numpy as np
-mu, sigma = 0, 0.1 # mean and standard deviation
-s = np.random.normal(mu, sigma, 1000)
+import time
+
+import sys, os
 
 class CPM_fixed():
     fixed_cpm = 1.2
@@ -103,17 +104,29 @@ if __name__ == '__main__':
                       CVR_model=CVR_norm(),
                       AOV_model=AOV_norm()
                       )
+
     action = [3000, 1000]
-    for e in range(2):
+    episodes = 1000000
+    time_horizon = 30
+
+    for e in range(episodes):
+        start_time = time.time()
+
         print('------------------------------')
         print('EPISODE: {}'.format(e))
         print('------------------------------')
 
         env.reset()
-        for t in range(3):
+        for t in range(time_horizon):
             print('------------------------------')
             print('TIMESTAMP: {}'.format(t))
             print('------------------------------')
             observation, reward, done, info = env.step(action=action)
             #print(observation, reward, done, info)
+
+        end_time = time.time()
+        delta = end_time - start_time
+
+        print(e, delta)
+
     env.close()

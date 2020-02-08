@@ -101,7 +101,10 @@ class SimulatorEnv(gym.Env):
             cpm = self.CPM_model.get_cpm(history=self.cpm_data[i]+self.cpm_pred[i])
             self.cpm_pred[i].append(cpm)
             print('CPM = {}'.format(cpm))
-            impressions = (ad_spend / cpm) * 1000
+            if cpm > 0:
+                impressions = (ad_spend / cpm) * 1000
+            else:
+                impressions = 0
             total_impressions += impressions
             print('Impressions = {:,.0f}'.format(impressions))
 
@@ -135,11 +138,6 @@ class SimulatorEnv(gym.Env):
         print('AOV = {}'.format(aov))
         sales = orders * aov
         print('*** Total Sales = {} ***'.format(sales))
-        print(len(self.cpm_data[0]), len(self.cpm_data[1]))
-        print(len(self.ctr_data[0]), len(self.ctr_data[1]))
-        print(len(self.organic_sessions_data))
-        print(len(self.cvr_data))
-        print(len(self.aov_data))
 
         print()
 
