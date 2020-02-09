@@ -1,13 +1,4 @@
 import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
-
-import numpy as np
-import random
-import math
-
-import logging.config
-
 
 class SimulatorEnv(gym.Env):
 
@@ -16,57 +7,59 @@ class SimulatorEnv(gym.Env):
         print('Environment initialized')
 
         # ad channels metadata
-        self.ad_channels = []
-        self.num_ad_channels = 1
+        self.ad_channels = None
+        self.num_ad_channels = None
+        self.other_channels = None
+        self.num_other_channels = None
+        self.channels = None
+        self.num_channels = None
 
         # data history
-        self.cpm_data = []
-        self.ctr_data = []
-        self.organic_sessions_data = []
-        self.cvr_data = []
-        self.aov_data = []
+        self.cpv_data = None
+        self.other_sessions_data = None
+        self.cvr_data = None
+        self.aov_data = None
 
         # predictions
-        self.cpm_pred = self.init_pred()
-        self.ctr_pred = self.init_pred()
-        self.organic_sessions_pred = []
-        self.cvr_pred = []
-        self.aov_pred = []
+        self.cpv_pred = None
+        self.other_sessions_pred = None
+        self.cvr_pred = None
+        self.aov_pred = None
 
         # models
-        self.CPM_model = []
-        self.CTR_model = []
-        self.OrganicSessions_model = []
-        self.CVR_model = []
-        self.AOV_model = []
+        self.CPV_model = None
+        self.OtherSessions_model = None
+        self.CVR_model = None
+        self.AOV_model = None
 
         # simulator info
         self.done = False
         self.observation_space = []
         self.action_episode_memory = []
 
-    def init_pred(self):
+    def init_pred(self, num):
         pred = []
-        for i in range(self.num_ad_channels):
+        for i in range(num):
             pred.append([])
         return pred
 
-    def configure_env(self, ad_channels, cpm_data, ctr_data, organic_sessions_data, cvr_data, aov_data, CPM_model,
-                      CTR_model, OrganicSessions_model, CVR_model, AOV_model):
+    def configure_env(self, ad_channels, other_channels, cpv_data, other_sessions_data, cvr_data, aov_data, CPV_model,
+                      OtherSessions_model, CVR_model, AOV_model):
         print('Configure env')
-
         self.ad_channels = ad_channels
-        self.num_ad_channels = len(self.ad_channels)
+        self.num_ad_channels = len(ad_channels)
+        self.other_channels = other_channels
+        self.num_other_channels = len(other_channels)
+        self.channels = ad_channels + other_channels
+        self.num_channels = self.num_ad_channels + self.num_other_channels
 
-        self.cpm_data = cpm_data
-        self.ctr_data = ctr_data
-        self.organic_sessions_data = organic_sessions_data
+        self.cpv_data = cpv_data
+        self.other_sessions_data = other_sessions_data
         self.cvr_data = cvr_data
         self.aov_data = aov_data
 
-        self.CPM_model = CPM_model
-        self.CTR_model = CTR_model
-        self.OrganicSessions_model = OrganicSessions_model
+        self.CPV_model = CPV_model
+        self.OtherSessions_model = OtherSessions_model
         self.CVR_model = CVR_model
         self.AOV_model = AOV_model
 
@@ -89,55 +82,50 @@ class SimulatorEnv(gym.Env):
         if len(action) != self.num_ad_channels:
             raise RuntimeError("Not every ad channel has an action")
 
-        total_impressions = 0
         total_sessions = 0
+        total_orders = 0
+        total_sales = 0
 
-        for i in range(self.num_ad_channels):
+        for i in range(self.num_channels):
 
-            ad_spend = action[i]
-            print("*** {} spending = £{:,.0f} ***".format(self.ad_channels[i], ad_spend))
+            if self.channels[i] != 'other':
+                ad_spend = action[i]
+                print("*** {} spending = £{:,.0f} ***".format(self.channels[i], ad_spend))
 
-            # Impressions
-            cpm = self.CPM_model.get_cpm(history=self.cpm_data[i]+self.cpm_pred[i])
-            self.cpm_pred[i].append(cpm)
-            print('CPM = {}'.format(cpm))
-            if cpm > 0:
-                impressions = (ad_spend / cpm) * 1000
+                # Sessions
+                cpv = self.CPV_model.run(history=self.cpv_data[i]+self.cpv_pred[i])
+                self.cpv_pred[i].append(cpv)
+                print('CPV = {}'.format(cpv))
+                sessions = cpv * ad_spend
+                print('Sessions = {:,.0f}'.format(sessions))
+
             else:
-                impressions = 0
-            total_impressions += impressions
-            print('Impressions = {:,.0f}'.format(impressions))
+                # Other Sessions
+                sessions = self.OtherSessions_model.run(
+                    history=self.other_sessions_data + self.other_sessions_pred)
+                self.other_sessions_pred.append(sessions)
+                print('Other Sessions = {:,.0f}'.format(sessions))
 
-            # Sessions
-            ctr = self.CTR_model.get_ctr(history=self.ctr_data[i]+self.ctr_pred[i])
-            self.ctr_pred[i].append(ctr)
-            print('CTR = {}'.format(ctr))
-            sessions = impressions * ctr
             total_sessions += sessions
-            print('Sessions = {:,.0f}'.format(sessions))
 
-        # Organic Sessions
-        organic_sessions = self.OrganicSessions_model.get_sessions(history=self.organic_sessions_data+self.organic_sessions_pred)
-        self.organic_sessions_pred.append(organic_sessions)
-        print('Organic Sessions: {:,.0f}'.format(organic_sessions))
+            # Orders
+            cvr = self.CVR_model.run(history=self.cvr_data[i]+self.cvr_pred[i])
+            self.cvr_pred.append(cvr)
+            print('CVR = {}'.format(cvr))
+            orders = sessions * cvr
+            total_orders += orders
+            print(' Orders = {}'.format(orders))
 
-        # Organic Sessions
-        print('*** Total Impressions: {:,.0f} ***'.format(total_impressions))
+            # Sales
+            aov = self.AOV_model.run(history=self.aov_data[i]+self.aov_pred[i])
+            self.aov_pred.append(aov)
+            print('AOV = {}'.format(aov))
+            sales = orders * aov
+            total_sales += sales
+
         print('*** Total Sessions: {:,.0f} ***'.format(total_sessions))
-
-        # Orders
-        cvr = self.CVR_model.get_cvr(history=self.cvr_data+self.cvr_pred)
-        self.cvr_pred.append(cvr)
-        print('CVR = {}'.format(cvr))
-        orders = total_sessions * cvr
-        print('***Total Orders = {} ***'.format(orders))
-
-        # Sales
-        aov = self.AOV_model.get_aov(history=self.aov_data+self.aov_pred)
-        self.aov_pred.append(aov)
-        print('AOV = {}'.format(aov))
-        sales = orders * aov
-        print('*** Total Sales = {} ***'.format(sales))
+        print('*** Total Orders: {:,.0f} ***'.format(total_orders))
+        print('*** Total Sales: {:,.0f} ***'.format(total_sales))
 
         print()
 
@@ -156,8 +144,7 @@ class SimulatorEnv(gym.Env):
     def reset(self):
 
         print('Environment reset')
-        self.cpm_pred = self.init_pred()
-        self.ctr_pred = self.init_pred()
-        self.organic_sessions_pred = []
-        self.cvr_pred = []
-        self.aov_pred = []
+        self.cpv_pred = self.init_pred(num=self.num_ad_channels)
+        self.other_sessions_pred = []
+        self.cvr_pred = self.init_pred(num=self.num_channels)
+        self.aov_pred = self.init_pred(num=self.num_channels)
